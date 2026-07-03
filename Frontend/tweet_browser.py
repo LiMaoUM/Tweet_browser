@@ -556,8 +556,8 @@ class Session:
         if inputSet == None or type(inputSet) != Subset:
             inputSet = self.currentSet
         df = self.allData.iloc[inputSet.indices]
-        resultDict = {}
         results = []
+        failedBatches = 0
         i = 0
         while i < len(inputSet.indices):
             start = i
@@ -566,12 +566,17 @@ class Session:
                 tweet = self.allData.iloc[inputSet.indices[i]]['Message']
                 tweets += f"{i}-[{tweet}]\n"
                 i += 1
-            batchResult = await stance_annotation(tweets, topic, stances, examples)
-            batchResult = batchResult[batchResult.find("{"): ]
-            batchResult = json.loads(batchResult)
-            # resultDict = {**resultDict, **(json.loads(batchResult))}
+            try:
+                batchResult = await stance_annotation(tweets, topic, stances, examples)
+                batchStances = parse_stance_response(batchResult, start, i)
+            except BackendError:
+                if start == 0:
+                    raise  # backend is down; nothing to salvage
+                failedBatches += 1
+                batchStances = {j: -1 for j in range(start, i)}
             for j in range(start, i):
-                results.append(int(batchResult["tweet-" + str(j)]))
+                results.append(batchStances[j])
+        self.lastStanceFailedBatches = failedBatches
         df["stance"] = results
         if updateAllData:
             self.allData["stance"] = None
