@@ -1,5 +1,6 @@
 import warnings
 warnings.filterwarnings('ignore')
+import html
 import ipywidgets as widgets
 import anywidget
 import traitlets
@@ -208,11 +209,11 @@ class InferDemographicsModule():
         for attr, counts in dists.items():
             total = sum(counts.values()) or 1
             rows = "".join(
-                f"<tr><td>{value}</td><td>{count}</td><td>{count / total:.0%}</td></tr>"
+                f"<tr><td>{html.escape(str(value))}</td><td>{count}</td><td>{count / total:.0%}</td></tr>"
                 for value, count in sorted(counts.items(), key=lambda kv: -kv[1])
             )
             parts.append(
-                f"<h4>{attr.replace('_', ' ').title()}</h4>"
+                f"<h4>{html.escape(attr.replace('_', ' ').title())}</h4>"
                 f"<table><tr><th>Value</th><th>Posts</th><th>Share</th></tr>{rows}</table>"
             )
         self.resultsHTML.value = "<div class='demographics-results'>" + "".join(parts) + "</div>"
