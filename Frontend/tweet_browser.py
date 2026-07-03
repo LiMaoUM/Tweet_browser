@@ -37,10 +37,15 @@ def get_embedding_model():
 def load_or_compute_embeddings(data, path):
     """Load precomputed embeddings if the file matches the dataset, else compute and save."""
     if path and os.path.isfile(path):
-        arr = pd.read_csv(path, header=None).to_numpy(dtype=np.float32)
-        if arr.ndim == 2 and arr.shape[0] == len(data):
+        try:
+            arr = pd.read_csv(path, header=None).to_numpy(dtype=np.float32)
+        except (ValueError, pd.errors.EmptyDataError, pd.errors.ParserError):
+            arr = None
+            print(f"Embeddings file {path} is unreadable; recomputing.")
+        if arr is not None and arr.ndim == 2 and arr.shape[0] == len(data):
             return torch.from_numpy(arr)
-        print(f"Embeddings file {path} has {arr.shape[0]} rows but dataset has {len(data)}; recomputing.")
+        if arr is not None:
+            print(f"Embeddings file {path} has {arr.shape[0]} rows but dataset has {len(data)}; recomputing.")
     embeddings = get_embedding_model().encode(
         data["Message"].astype(str).tolist(),
         convert_to_tensor=True,

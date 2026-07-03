@@ -56,6 +56,19 @@ def test_recompute_and_save_on_row_mismatch(tmp_path, monkeypatch):
     assert saved.shape == (3, 4)  # file was refreshed
 
 
+def test_recompute_when_file_corrupt(tmp_path, monkeypatch):
+    import tweet_browser as tb
+
+    fake = FakeModel()
+    monkeypatch.setattr(tb, "get_embedding_model", lambda: fake)
+    path = tmp_path / "emb.csv"
+    path.write_text("not,numbers,at,all\nx,y,z,w\n")
+
+    result = tb.load_or_compute_embeddings(_df(3), str(path))
+    assert result.shape == (3, 4)
+    assert fake.encode_calls == 1
+
+
 def test_compute_when_file_missing(tmp_path, monkeypatch):
     import tweet_browser as tb
 
