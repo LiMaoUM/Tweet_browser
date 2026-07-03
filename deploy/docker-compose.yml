@@ -1,0 +1,59 @@
+# Tweet Browser model backends. Voila runs on the host: deploy/scripts/serve_app.sh
+# Both services are pinned to GPU 1 per the design spec; memory budgets 0.25 + 0.68.
+services:
+  vllm-summarizer:
+    image: vllm/vllm-openai:latest
+    container_name: tweet-browser-summarizer
+    ports:
+      - "8000:8000"
+    volumes:
+      - /home/maolee/projects/llm-deploy/Lllama3TS_unsloth_vllm:/models/Lllama3TS_unsloth_vllm:ro
+    command: >
+      --model /models/Lllama3TS_unsloth_vllm
+      --served-model-name Lllama3TS_unsloth_vllm
+      --gpu-memory-utilization 0.25
+      --max-model-len 8192
+      --api-key ${LLM_API_KEY:-token-census}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
+    restart: unless-stopped
+
+  vllm-stance:
+    image: vllm/vllm-openai:latest
+    container_name: tweet-browser-stance
+    ports:
+      - "8001:8000"
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ${HF_CACHE:-/home/maolee/.cache/huggingface}:/root/.cache/huggingface
+    command: >
+      --model ${STANCE_MODEL:-google/gemma-4-26B-A4B-it-qat-q4_0-unquantized-assistant}
+      --gpu-memory-utilization 0.68
+      --max-model-len 16384
+      --api-key ${LLM_API_KEY:-token-census}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 600s
+    restart: unless-stopped
