@@ -128,8 +128,52 @@ class StanceAnalysisModule():
 
 class TimeSeriesModule():
     def __init__(self):
-        self.timeSeriesMode = widgets.ToggleButtons(options = ["Overview", "Gender", "Stance"]).add_class("time-series-toggle")
-        self.genderCheckboxes = [widgets.Checkbox(value=True, description = "MALE"), widgets.Checkbox(value=True, description = "FEMALE"), widgets.Checkbox(value=True, description = "OTHER")]
+        self.timeSeriesMode = widgets.ToggleButtons(options = ["Overview", "Sex", "Age", "Education", "Income", "Party", "Ideology", "Urbanicity", "Metro", "Stance"]).add_class("time-series-toggle")
+        
+        # 现有的复选框
+        self.genderCheckboxes = [widgets.Checkbox(value=True, description = "male"), widgets.Checkbox(value=True, description = "female"), ]
+        self.ageCheckboxes = [
+            widgets.Checkbox(value=True, description = "18-29"), 
+            widgets.Checkbox(value=True, description = "30-44"), 
+            widgets.Checkbox(value=True, description = "45-59"), 
+            widgets.Checkbox(value=True, description = "60+")
+        ]
+        self.educationCheckboxes = [
+            widgets.Checkbox(value=True, description = "Less than high school"), 
+            widgets.Checkbox(value=True, description = "High school graduate (high school diploma or the equivalent GED)"), 
+            widgets.Checkbox(value=True, description = "Some college or Associate's degree"), 
+            widgets.Checkbox(value=True, description = "Bachelor's degree or higher")
+        ]
+
+        # 新增的复选框
+        self.incomeCheckboxes = [
+            widgets.Checkbox(value=True, description = "Low income"), 
+            widgets.Checkbox(value=True, description = "Middle income"), 
+            widgets.Checkbox(value=True, description = "High income")
+        ]
+        
+        self.partyCheckboxes = [
+            widgets.Checkbox(value=True, description = "Republican"), 
+            widgets.Checkbox(value=True, description = "Democrat"), 
+            widgets.Checkbox(value=True, description = "Independent")
+        ]
+        
+        self.ideologyCheckboxes = [
+            widgets.Checkbox(value=True, description = "Conservative"), 
+            widgets.Checkbox(value=True, description = "Moderate"), 
+            widgets.Checkbox(value=True, description = "Liberal")
+        ]
+        
+        self.urbanicityCheckboxes = [
+            widgets.Checkbox(value=True, description = "Urban"), 
+            widgets.Checkbox(value=True, description = "Suburban"), 
+            widgets.Checkbox(value=True, description = "Rural")
+        ]
+        
+        self.metroCheckboxes = [
+            widgets.Checkbox(value=True, description = "Metro"), 
+            widgets.Checkbox(value=True, description = "Non-Metro")
+        ]
 
         self.stanceCheckboxes = []
 
@@ -147,3 +191,28 @@ class WordCloudModule():
         self.tools = widgets.VBox([self.searchBar, self.regenerate]).add_class("word-cloud-tools")
         self.content = widgets.HBox([self.tools]).add_class("word-cloud-content")
         self.page = widgets.VBox([self.title, self.content]).add_class("word-cloud-page")
+
+class InferDemographicsModule():
+    def __init__(self):
+        self.inferDemographics = InferDemographics()
+        self.page = self.inferDemographics
+
+        self.backButton = widgets.Button(description="< New Demographic Analysis", layout=widgets.Layout(margin="0 auto 0 0", flex="0 0")).add_class("clear-button")
+        self.resultsTitle = widgets.HTML("").add_class("display-count")
+        self.resultsHTML = widgets.HTML("")
+        self.resultsPage = widgets.VBox([self.backButton, self.resultsTitle, self.resultsHTML])
+
+    def showResults(self, dists, sampleSize):
+        self.resultsTitle.value = f"Inferred demographics for {sampleSize:,d} posts"
+        parts = []
+        for attr, counts in dists.items():
+            total = sum(counts.values()) or 1
+            rows = "".join(
+                f"<tr><td>{value}</td><td>{count}</td><td>{count / total:.0%}</td></tr>"
+                for value, count in sorted(counts.items(), key=lambda kv: -kv[1])
+            )
+            parts.append(
+                f"<h4>{attr.replace('_', ' ').title()}</h4>"
+                f"<table><tr><th>Value</th><th>Posts</th><th>Share</th></tr>{rows}</table>"
+            )
+        self.resultsHTML.value = "<div class='demographics-results'>" + "".join(parts) + "</div>"
