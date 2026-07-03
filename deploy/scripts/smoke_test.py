@@ -34,12 +34,26 @@ def main():
         print("FAIL: backend(s) unreachable:", ", ".join(down))
         return 1
 
-    summary = prompts.ai_summarize(SUMMARY_TWEETS)
+    try:
+        summary = prompts.ai_summarize(SUMMARY_TWEETS)
+    except prompts.BackendError as e:
+        print(f"FAIL: {e}")
+        return 1
+
+    if not summary or not summary.strip():
+        print("FAIL: summarizer returned an empty response")
+        return 1
+
     print("summary ok:", summary[:120].replace("\n", " "))
 
-    raw = asyncio.run(
-        prompts.stance_annotation(STANCE_TWEETS, "the US census", ["support", "oppose"], {})
-    )
+    try:
+        raw = asyncio.run(
+            prompts.stance_annotation(STANCE_TWEETS, "the US census", ["support", "oppose"], {})
+        )
+    except prompts.BackendError as e:
+        print(f"FAIL: {e}")
+        return 1
+
     stances = prompts.parse_stance_response(raw, 0, 5)
     print("stances:", stances)
     if all(v == -1 for v in stances.values()):
