@@ -1,14 +1,70 @@
-from tqdm import tqdm
+import json
+import re
+
+import httpx
 import openai
 from openai import AsyncOpenAI
-import asyncio
+
+import config
 
 AI_SUMMARY_PROMPT = """"I would like you to help me by summarizing a group of tweets, delimited by triple backticks, and each tweet is labeled by a number in a given format: number-[tweet]. Give me a comprehensive summary in a concise paragraph and as you generate each sentence, provide the identifying number of tweets on which that sentence is based:"""
 
-summarizerClient = openai.OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="token-census",
-)
+
+class BackendError(Exception):
+    """An LLM backend is unreachable or returned an unusable response."""
+
+    def __init__(self, backend, url, message):
+        self.backend = backend
+        self.url = url
+        super().__init__(f"{backend} backend at {url}: {message}")
+
+
+_summarizer_client = None
+_stance_client = None
+
+
+def _get_summarizer_client():
+    global _summarizer_client
+    if _summarizer_client is None:
+        _summarizer_client = openai.OpenAI(
+            base_url=config.SUMMARIZER_BASE_URL,
+            api_key=config.LLM_API_KEY,
+            timeout=config.SUMMARY_TIMEOUT_S,
+            max_retries=1,
+        )
+    return _summarizer_client
+
+
+def _get_stance_client():
+    global _stance_client
+    if _stance_client is None:
+        _stance_client = AsyncOpenAI(
+            base_url=config.STANCE_BASE_URL,
+            api_key=config.LLM_API_KEY,
+            timeout=config.STANCE_TIMEOUT_S,
+            max_retries=1,
+        )
+    return _stance_client
+
+
+def check_backends():
+    """Ping both vLLM servers. Returns {"summarizer": bool, "stance": bool}; never raises."""
+    status = {}
+    for name, base_url in (
+        ("summarizer", config.SUMMARIZER_BASE_URL),
+        ("stance", config.STANCE_BASE_URL),
+    ):
+        try:
+            resp = httpx.get(
+                base_url.rstrip("/") + "/models",
+                headers={"Authorization": f"Bearer {config.LLM_API_KEY}"},
+                timeout=5.0,
+            )
+            status[name] = resp.status_code == 200
+        except httpx.HTTPError:
+            status[name] = False
+    return status
+
 
 def ai_summarize(tweets):
     llama3_gen_prompt = """system
@@ -17,23 +73,44 @@ def ai_summarize(tweets):
 
 {}assistant {}"""
     input_text = llama3_gen_prompt.format(
-        AI_SUMMARY_PROMPT, 
-        tweets, 
+        AI_SUMMARY_PROMPT,
+        tweets,
         ""
-    ) 
-    completion = summarizerClient.chat.completions.create(
-        model="Lllama3TS_unsloth_vllm",
-        messages=[{"role": "user", "content": input_text}],
-        temperature=0
     )
-    result = completion.choices[0].message.content
-    return result
+    client = _get_summarizer_client()
+    try:
+        completion = client.chat.completions.create(
+            model=config.SUMMARIZER_MODEL,
+            messages=[{"role": "user", "content": input_text}],
+            temperature=0,
+        )
+    except openai.OpenAIError as e:
+        raise BackendError("summarizer", config.SUMMARIZER_BASE_URL, str(e)) from e
+    return completion.choices[0].message.content
 
 
-stanceClient = AsyncOpenAI(
-    base_url="http://localhost:8001/v1",
-    api_key="token-census",
-)
+def parse_stance_response(text, start, end):
+    """Map tweet ids in [start, end) to int stances from a model response.
+
+    Extracts the first {...} block; any id that is missing, out of range of the
+    JSON, or has a non-integer value gets -1 instead of raising.
+    """
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    parsed = {}
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            parsed = {}
+    results = {}
+    for j in range(start, end):
+        raw = parsed.get(f"tweet-{j}", -1)
+        try:
+            results[j] = int(raw)
+        except (TypeError, ValueError):
+            results[j] = -1
+    return results
+
 
 async def stance_annotation(tweets, topic, stances, examples):
     formattedStances = []
@@ -42,7 +119,7 @@ async def stance_annotation(tweets, topic, stances, examples):
         if stances[i] != "":
             currStanceNum = len(formattedStances)
             formattedStances.append(f"{currStanceNum}: {stances[i]}")
-    
+
     exampleCount = 0
     for key in examples.keys():
         examplePrompt += f"{exampleCount}-{key}\n"
@@ -55,7 +132,6 @@ async def stance_annotation(tweets, topic, stances, examples):
     examplePrompt += "}"
     if len(examples) == 0:
         examplePrompt = ""
-    # print(examplePrompt)
 
     prompt = [
         {
@@ -79,11 +155,16 @@ async def stance_annotation(tweets, topic, stances, examples):
     """,
         },
     ]
-    completion = await stanceClient.chat.completions.create(
-        model="meta-llama/Meta-Llama-3-8B-Instruct",
-        messages=prompt,
-    )
+    client = _get_stance_client()
+    request = {"model": config.STANCE_MODEL, "messages": prompt}
+    try:
+        try:
+            completion = await client.chat.completions.create(
+                **request, response_format={"type": "json_object"}
+            )
+        except openai.BadRequestError:
+            completion = await client.chat.completions.create(**request)
+    except openai.OpenAIError as e:
+        raise BackendError("stance", config.STANCE_BASE_URL, str(e)) from e
 
     return completion.choices[0].message.content
-
-
