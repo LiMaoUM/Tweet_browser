@@ -5,7 +5,6 @@ import anywidget
 import traitlets
 import jupyter
 from IPython.display import display, Javascript
-import voila
 
 TWEETS_PER_PAGE = 20
 DEBUG_MODE = True
@@ -151,6 +150,32 @@ class SemanticSearch(anywidget.AnyWidget):
     value = traitlets.Unicode("").tag(sync=True)
     placeholder = traitlets.Unicode("").tag(sync=True)
     filterPercent = traitlets.CInt(50).tag(sync=True)
+    debug_output = traitlets.Unicode("").tag(sync=True)  # 用于显示调试信息
+    
+    def __init__(self, session=None, **kwargs):
+        super().__init__(**kwargs)
+        self.session = session
+        if session:
+            self.observe(self._on_value_change, names=['value'])
+    
+    def _on_value_change(self, change):
+        """当 semantic search 输入值改变时触发"""
+        debug_msg = f"🔍 SemanticSearch widget value changed: '{change['old']}' -> '{change['new']}'"
+        self.debug_output = debug_msg
+        
+        if self.session and change['new'] and change['new'].strip():
+            debug_msg += f"\n📞 Calling session.semanticSearch with: '{change['new']}', percent: {self.filterPercent}"
+            self.debug_output = debug_msg
+            
+            try:
+                self.session.semanticSearch(change['new'], self.filterPercent)
+                debug_msg += "\n✅ semanticSearch completed successfully"
+                self.debug_output = debug_msg
+            except Exception as e:
+                debug_msg += f"\n❌ Error in semantic search: {e}"
+                self.debug_output = debug_msg
+                import traceback
+                traceback.print_exc()
 
 class StanceAnalysis(anywidget.AnyWidget):
     _esm = "anywidget/stanceAnalysis.js"
@@ -163,3 +188,19 @@ class StanceAnalysis(anywidget.AnyWidget):
     filePath = traitlets.Unicode(JUPYTER_FILE_PATH).tag(sync=True)
     seenInfo = traitlets.Int(0).tag(sync=True)
     changeSignal = traitlets.Int(0).tag(sync=True)
+
+class InferDemographics(anywidget.AnyWidget):
+    _esm = "anywidget/inferDemographics.js"
+    _css = "anywidget/inferDemographics.css"
+    filePath = traitlets.Unicode(JUPYTER_FILE_PATH).tag(sync=True)
+    
+    # Page control similar to StanceAnalysis
+    pageNumber = traitlets.Int(0).tag(sync=True)
+    seenInfo = traitlets.Int(0).tag(sync=True)
+    
+    # Control states
+    isLoading = traitlets.Bool(False).tag(sync=True)
+    showResults = traitlets.Bool(False).tag(sync=True)
+    
+    # Results data
+    inferenceResults = traitlets.Dict({}).tag(sync=True)
