@@ -10,7 +10,7 @@ SUMMARIZER_BASE_URL = os.environ.get("SUMMARIZER_BASE_URL", "http://localhost:80
 SUMMARIZER_MODEL = os.environ.get("SUMMARIZER_MODEL", "Lllama3TS_unsloth_vllm")
 STANCE_BASE_URL = os.environ.get("STANCE_BASE_URL", "http://localhost:8001/v1")
 STANCE_MODEL = os.environ.get(
-    "STANCE_MODEL", "google/gemma-4-26B-A4B-it-qat-q4_0-unquantized-assistant"
+    "STANCE_MODEL", "google/gemma-4-26B-A4B-it-qat-q4_0-unquantized"
 )
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "token-census")
 SUMMARY_TIMEOUT_S = float(os.environ.get("SUMMARY_TIMEOUT_S", "120"))

@@ -5,7 +5,7 @@ Three processes on the GPU server (all model traffic stays on `localhost`):
 | Service | Port | GPU | What |
 | --- | --- | --- | --- |
 | vllm-summarizer | 8000 | 1 (25% mem) | fine-tuned Llama-3-8B, name `Lllama3TS_unsloth_vllm` |
-| vllm-stance | 8001 | 1 (68% mem) | `google/gemma-4-26B-A4B-it-qat-q4_0-unquantized-assistant` |
+| vllm-stance | 8001 | 1 (68% mem) | `google/gemma-4-26B-A4B-it-qat-q4_0-unquantized` |
 | Voila app | 8866 | 1 (embeddings) | `Frontend/tweet_browser.ipynb` |
 
 ## Quickstart
@@ -26,8 +26,39 @@ docker compose -f deploy/docker-compose.yml ps   # wait for both to be "healthy"
 python3 deploy/scripts/smoke_test.py   # prints PASS
 ```
 
+## Live deployment on gpusrv (2026-07-03)
+
+The compose path is currently blocked on this box: `nvidia-container-runtime`
+is not installed (needs sudo: `apt-get install nvidia-container-toolkit`,
+then `systemctl restart docker`). The running deployment instead uses:
+
+- Summarizer: bare-metal vLLM from `/home/maolee/venvs/vllm` on **port 8002**
+  (port 8000 is occupied by an unrelated sglang TTS server), GPU 1, util 0.25.
+- Stance: the lab's existing `google/gemma-4-31B-it` vLLM on **port 8800**
+  (no new GPU cost). Any OpenAI-compatible server works; that is what
+  `STANCE_BASE_URL`/`STANCE_MODEL` in `deploy/.env` are for.
+- `deploy/.env` on the server holds these overrides; restart Voila after
+  changing it (`serve_app.sh` sources it at startup).
+
+Restart commands (bare-metal):
+
+```bash
+CUDA_VISIBLE_DEVICES=1 nohup /home/maolee/venvs/vllm/bin/vllm serve \
+  /home/maolee/projects/llm-deploy/Lllama3TS_unsloth_vllm \
+  --served-model-name Lllama3TS_unsloth_vllm --port 8002 \
+  --gpu-memory-utilization 0.25 --max-model-len 8192 \
+  --api-key token-census > /tmp/vllm-summarizer.log 2>&1 &
+./deploy/scripts/serve_app.sh
+```
+
 ## Notes
 
+- **Model default:** the stance default is the standard
+  `google/gemma-4-26B-A4B-it-qat-q4_0-unquantized`. The `-assistant` variant
+  is NOT servable (its `gemma4_assistant` architecture has no vLLM/AutoModel
+  implementation as of vLLM 0.24).
+- **Port conflicts:** if 8000/8001 are taken (shared box), pick free ports in
+  `deploy/.env` and mirror them in the compose `ports:` mapping.
 - **First app start after a dataset change** recomputes embeddings and rewrites
   `Frontend/allCensus_sample_embeddings.csv`; later starts load it in seconds.
 - **GPU budget (GPU 1, H100 80 GB):** 0.25 + 0.68 = 0.93 of the card. If vLLM
