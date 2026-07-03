@@ -34,6 +34,12 @@ def test_parse_garbage_returns_all_minus_one():
     assert prompts.parse_stance_response("no json here", 0, 2) == {0: -1, 1: -1}
 
 
+def test_parse_first_json_object_survives_trailing_junk():
+    import prompts
+    text = '{"tweet-0": 1} some prose {"not": "this"}'
+    assert prompts.parse_stance_response(text, 0, 2) == {0: 1, 1: -1}
+
+
 # ---------- ai_summarize ----------
 
 def test_ai_summarize_success(monkeypatch):
@@ -68,6 +74,23 @@ def test_ai_summarize_raises_backend_error(monkeypatch):
         prompts.ai_summarize("0-[hello]")
     assert exc.value.backend == "summarizer"
     assert "8000" in exc.value.url
+
+
+def test_ai_summarize_empty_response_raises(monkeypatch):
+    import prompts
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            msg = type("M", (), {"content": ""})
+            choice = type("C", (), {"message": msg})
+            return type("R", (), {"choices": [choice]})
+
+    class FakeClient:
+        chat = type("Chat", (), {"completions": FakeCompletions()})
+
+    monkeypatch.setattr(prompts, "_get_summarizer_client", lambda: FakeClient())
+    with pytest.raises(prompts.BackendError):
+        prompts.ai_summarize("0-[hello]")
 
 
 # ---------- stance_annotation ----------

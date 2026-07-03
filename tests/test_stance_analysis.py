@@ -72,3 +72,17 @@ def test_first_batch_failure_raises():
     tb.stance_annotation = fake_annotation
     with pytest.raises(BackendError):
         asyncio.run(s.stanceAnalysis("census", ["pro"], {}))
+
+
+def test_unparseable_batch_counts_as_failed():
+    import tweet_browser as tb
+
+    s = _session(10)
+
+    async def fake_annotation(tweets, topic, stances, examples):
+        return "no json at all"
+
+    tb.stance_annotation = fake_annotation
+    df = asyncio.run(s.stanceAnalysis("census", ["pro"], {}))
+    assert list(df["stance"]) == [-1] * 10
+    assert s.lastStanceFailedBatches == 1

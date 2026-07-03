@@ -569,6 +569,8 @@ class Session:
             try:
                 batchResult = await stance_annotation(tweets, topic, stances, examples)
                 batchStances = parse_stance_response(batchResult, start, i)
+                if batchStances and all(v == -1 for v in batchStances.values()):
+                    failedBatches += 1
             except BackendError:
                 if start == 0:
                     raise  # backend is down; nothing to salvage

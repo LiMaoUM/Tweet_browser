@@ -86,22 +86,27 @@ def ai_summarize(tweets):
         )
     except openai.OpenAIError as e:
         raise BackendError("summarizer", config.SUMMARIZER_BASE_URL, str(e)) from e
-    return completion.choices[0].message.content
+    content = completion.choices[0].message.content
+    if not content or not content.strip():
+        raise BackendError("summarizer", config.SUMMARIZER_BASE_URL, "empty response")
+    return content
 
 
 def parse_stance_response(text, start, end):
     """Map tweet ids in [start, end) to int stances from a model response.
 
-    Extracts the first {...} block; any id that is missing, out of range of the
-    JSON, or has a non-integer value gets -1 instead of raising.
+    Decodes the first JSON object in the text (tolerating prose before and
+    junk after it); any id that is missing or has a non-integer value gets -1.
     """
-    match = re.search(r"\{.*\}", text, re.DOTALL)
     parsed = {}
-    if match:
+    idx = text.find("{")
+    if idx != -1:
         try:
-            parsed = json.loads(match.group(0))
+            parsed, _ = json.JSONDecoder().raw_decode(text[idx:])
         except json.JSONDecodeError:
             parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
     results = {}
     for j in range(start, end):
         raw = parsed.get(f"tweet-{j}", -1)
