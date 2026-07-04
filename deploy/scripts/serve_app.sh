@@ -10,4 +10,8 @@ if [ -f "$REPO_ROOT/deploy/.env" ]; then
 fi
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1}"
 cd "$REPO_ROOT/Frontend"
-exec voila --Voila.ip=0.0.0.0 --port=8866 tweet_browser.ipynb
+# disable_check_xsrf: intranet deployment; Voila 0.5's XSRF cookie desyncs on
+# page refresh, 403-ing kernel POSTs (generic "error when executing cell" page)
+exec voila --Voila.ip=0.0.0.0 --port=8866 \
+  --Voila.tornado_settings="{'disable_check_xsrf': True}" \
+  tweet_browser.ipynb
