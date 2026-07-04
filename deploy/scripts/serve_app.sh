@@ -9,6 +9,7 @@ if [ -f "$REPO_ROOT/deploy/.env" ]; then
   set +a
 fi
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1}"
+export PATH="$HOME/.local/bin:$PATH"   # voila lives here; systemd units get a bare PATH
 cd "$REPO_ROOT/Frontend"
 # disable_check_xsrf: intranet deployment; Voila 0.5's XSRF cookie desyncs on
 # page refresh, 403-ing kernel POSTs (generic "error when executing cell" page)

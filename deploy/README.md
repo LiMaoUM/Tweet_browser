@@ -74,3 +74,19 @@ CUDA_VISIBLE_DEVICES=1 nohup /home/maolee/venvs/vllm/bin/vllm serve \
   `python3 deploy/scripts/smoke_test.py`.
 - **Pinning:** `vllm/vllm-openai:latest` is used because Gemma 4 support is
   recent. After a successful deploy, pin the image digest in the compose file.
+
+## systemd user services (installed 2026-07-04)
+
+All three processes now run as systemd user units with `Restart=always`
+(this box kills GPU jobs unpredictably). Copies live in `deploy/systemd/`;
+installed at `~/.config/systemd/user/` with linger enabled.
+
+```bash
+systemctl --user status tweet-summarizer tweet-stance tweet-voila
+systemctl --user restart tweet-voila            # after editing serve_app.sh / .env
+journalctl --user -u tweet-summarizer -n 50     # logs
+```
+
+Gotcha: units get a bare PATH, so each unit sets PATH to its venv bin
+(vLLM shells out to `ninja` during startup compile) and `~/.local/bin`
+(voila). HF_HOME is set explicitly (units do not read .bashrc).
