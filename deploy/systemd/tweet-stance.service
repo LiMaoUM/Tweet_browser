@@ -1,0 +1,19 @@
+[Unit]
+Description=Tweet Browser stance (vLLM, gemma-4-31B-it TP2, port 8800)
+After=network.target
+
+[Service]
+WorkingDirectory=/home/maolee/projects/llm-deploy
+Environment=CUDA_VISIBLE_DEVICES=4,5
+Environment=HF_HOME=/home/model_cache/huggingface/
+Environment=PATH=/home/maolee/projects/llm-deploy/.venv/bin:/home/maolee/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/maolee/projects/llm-deploy/.venv/bin/vllm serve google/gemma-4-31B-it \
+  --tensor-parallel-size 2 --port 8800 --trust-remote-code \
+  --gpu-memory-utilization 0.90
+Restart=always
+RestartSec=20
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

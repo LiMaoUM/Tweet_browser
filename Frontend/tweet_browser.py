@@ -23,9 +23,39 @@ from transformers import AutoTokenizer
 import pickle
 import datetime
 
-embedding_model = SentenceTransformer(
-    "BAAI/bge-base-en-v1.5", device="cuda" if torch.cuda.is_available() else "cpu"
-)
+import config
+
+_embedding_model = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        device = config.EMBEDDING_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
+        _embedding_model = SentenceTransformer("BAAI/bge-base-en-v1.5", device=device)
+    return _embedding_model
+
+def load_or_compute_embeddings(data, path):
+    """Load precomputed embeddings if the file matches the dataset, else compute and save."""
+    if path and os.path.isfile(path):
+        try:
+            arr = pd.read_csv(path, header=None).to_numpy(dtype=np.float32)
+        except (ValueError, pd.errors.EmptyDataError, pd.errors.ParserError):
+            arr = None
+            print(f"Embeddings file {path} is unreadable; recomputing.")
+        if arr is not None and arr.ndim == 2 and arr.shape[0] == len(data):
+            return torch.from_numpy(arr)
+        if arr is not None:
+            print(f"Embeddings file {path} has {arr.shape[0]} rows but dataset has {len(data)}; recomputing.")
+    embeddings = get_embedding_model().encode(
+        data["Message"].astype(str).tolist(),
+        convert_to_tensor=True,
+        show_progress_bar=False,
+        batch_size=128,
+        normalize_embeddings=True,
+    ).cpu()
+    if path:
+        np.savetxt(path, embeddings.numpy(), delimiter=",")
+    return embeddings
 
 # this function reads in the data (copied from online)
 def parse_data(filename, header='infer'):
@@ -100,11 +130,11 @@ class Session:
             self.createSessionDump()
 
         if embeddings is None:
-            embeddings = embedding_model.encode(
+            embeddings = get_embedding_model().encode(
                 data["Message"],
                 convert_to_tensor=True,
-                show_progress_bar=True,
-                batch_size=32,
+                show_progress_bar=False,
+                batch_size=128,
                 normalize_embeddings=True,
             )
 
@@ -502,7 +532,7 @@ class Session:
     def getCentral(self, inputSet = None):
         if inputSet == None or type(inputSet) != Subset:
             inputSet = self.currentSet
-        input = self.embeddings.iloc[inputSet.indices]
+        input = self.embeddings[torch.tensor(np.asarray(inputSet.indices))].cpu().numpy()
         scores = ai_summary.get_fastlexrank_scores(input)
         data = self.allData.iloc[inputSet.indices]
         data = data.assign(centrality=scores)
@@ -511,10 +541,15 @@ class Session:
     def semanticSearch(self, query, topPercent, inputSet = None):
         if inputSet == None or type(inputSet) != Subset:
             inputSet = self.currentSet
-        query_embedding = embedding_model.encode(
-            query, convert_to_tensor=True, normalize_embeddings=True
+
+        query_embedding = get_embedding_model().encode(
+            query, convert_to_tensor=True, normalize_embeddings=True, show_progress_bar=False
         )
-        embeddingTensor = torch.from_numpy(self.embeddings.iloc[inputSet.indices].values).float()
+        
+        # Convert indices to tensor and select embeddings
+        indices_tensor = torch.tensor(np.asarray(inputSet.indices))
+        embeddingTensor = self.embeddings[indices_tensor].float().to(query_embedding.device)
+            
         cos_scores = torch.matmul(query_embedding, embeddingTensor.T).to("cpu").numpy().flatten()
         df = self.allData.iloc[inputSet.indices]
         df = df.assign(cos_score=cos_scores)
@@ -526,8 +561,8 @@ class Session:
         if inputSet == None or type(inputSet) != Subset:
             inputSet = self.currentSet
         df = self.allData.iloc[inputSet.indices]
-        resultDict = {}
         results = []
+        failedBatches = 0
         i = 0
         while i < len(inputSet.indices):
             start = i
@@ -536,12 +571,19 @@ class Session:
                 tweet = self.allData.iloc[inputSet.indices[i]]['Message']
                 tweets += f"{i}-[{tweet}]\n"
                 i += 1
-            batchResult = await stance_annotation(tweets, topic, stances, examples)
-            batchResult = batchResult[batchResult.find("{"): ]
-            batchResult = json.loads(batchResult)
-            # resultDict = {**resultDict, **(json.loads(batchResult))}
+            try:
+                batchResult = await stance_annotation(tweets, topic, stances, examples)
+                batchStances = parse_stance_response(batchResult, start, i)
+                if batchStances and all(v == -1 for v in batchStances.values()):
+                    failedBatches += 1
+            except BackendError:
+                if start == 0:
+                    raise  # backend is down; nothing to salvage
+                failedBatches += 1
+                batchStances = {j: -1 for j in range(start, i)}
             for j in range(start, i):
-                results.append(int(batchResult["tweet-" + str(j)]))
+                results.append(batchStances[j])
+        self.lastStanceFailedBatches = failedBatches
         df["stance"] = results
         if updateAllData:
             self.allData["stance"] = None

@@ -1,0 +1,19 @@
+[Unit]
+Description=Tweet Browser summarizer (vLLM, fine-tuned Llama-3-8B, port 8002)
+After=network.target
+
+[Service]
+Environment=CUDA_VISIBLE_DEVICES=3
+Environment=HF_HOME=/home/model_cache/huggingface/
+Environment=PATH=/home/maolee/venvs/vllm/bin:/home/maolee/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/maolee/venvs/vllm/bin/vllm serve /home/maolee/projects/llm-deploy/Lllama3TS_unsloth_vllm \
+  --served-model-name Lllama3TS_unsloth_vllm \
+  --port 8002 --gpu-memory-utilization 0.25 --max-model-len 8192 \
+  --api-key token-census
+Restart=always
+RestartSec=20
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

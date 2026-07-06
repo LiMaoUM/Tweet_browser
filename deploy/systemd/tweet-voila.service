@@ -1,0 +1,12 @@
+[Unit]
+Description=Tweet Browser Voila app (port 8866)
+After=network.target
+
+[Service]
+Environment=HF_HOME=/home/model_cache/huggingface/
+ExecStart=/home/maolee/projects/Tweet_browser/deploy/scripts/serve_app.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
