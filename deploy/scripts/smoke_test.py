@@ -26,7 +26,20 @@ STANCE_TWEETS = (
 )
 
 
+def report_widget_env():
+    """Print the widget-stack versions of THIS interpreter (the one Voila kernels
+    use when run via serve_app.sh), so version experiments are verifiable."""
+    print("interpreter:", sys.executable)
+    for pkg in ("anywidget", "ipywidgets", "voila"):
+        try:
+            mod = __import__(pkg)
+            print(f"{pkg}: {getattr(mod, '__version__', '?')} ({os.path.dirname(mod.__file__)})")
+        except ImportError:
+            print(f"{pkg}: NOT INSTALLED")
+
+
 def main():
+    report_widget_env()
     status = prompts.check_backends()
     print("backend status:", status)
     down = [name for name, ok in status.items() if not ok]
