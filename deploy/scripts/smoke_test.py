@@ -8,7 +8,26 @@ import asyncio
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Frontend")))
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "Frontend"))
+
+
+def _load_env_file():
+    """Load deploy/.env so the smoke test probes the LIVE endpoints, matching
+    what serve_app.sh gives the app. Explicitly exported env vars still win."""
+    path = os.path.join(_REPO_ROOT, "deploy", ".env")
+    if not os.path.isfile(path):
+        return
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_env_file()
 
 import prompts  # noqa: E402
 
